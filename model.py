@@ -26,6 +26,10 @@ FEATURE_COLS = [
 	"rolling_avg_kwh",
 	"load_diff_from_normal",
 	"power_kw",
+	"voltage",
+	"current",
+	"power_factor",
+	"energy_kwh_cum",
 ]
 CAT_COLS = ["meter_id"]
 

@@ -15,8 +15,8 @@ def load_data(path: Path) -> pd.DataFrame:
 	return df.sort_values("timestamp")
 
 
-def rule_based_labels(processed: pd.DataFrame, *, theft_ratio: float, fault_z: float) -> pd.Series:
-	"""Simple heuristic: theft when far below rolling average; fault when z-score high."""
+def rule_based_labels(processed: pd.DataFrame, *, theft_ratio: float, fault_z: float, volt_drop: float, over_current: float) -> pd.Series:
+	"""Heuristics: theft when far below rolling avg; fault when spike or electrical anomaly."""
 	df = processed.copy()
 	grouped = df.groupby("meter_id")
 	mean = grouped["kwh_denoised"].transform("mean")
@@ -26,14 +26,21 @@ def rule_based_labels(processed: pd.DataFrame, *, theft_ratio: float, fault_z: f
 	theft_mask = df["kwh_denoised"] < theft_ratio * df["rolling_avg_kwh"].clip(lower=0.001)
 	fault_mask = z > fault_z
 
+	if "voltage" in df.columns and "current" in df.columns:
+		v_mean = grouped["voltage"].transform("mean")
+		i_mean = grouped["current"].transform("mean")
+		low_voltage = df["voltage"] < volt_drop * v_mean.clip(lower=0.1)
+		high_current = df["current"] > over_current * i_mean.clip(lower=0.1)
+		fault_mask |= low_voltage & high_current
+
 	labels = pd.Series("normal", index=df.index)
 	labels[theft_mask] = "theft"
 	labels[fault_mask] = "fault"
 	return labels
 
 
-def predict_patterns(processed: pd.DataFrame, model=None, *, theft_ratio: float = 0.55, fault_z: float = 3.0) -> pd.Series:
-	labels = rule_based_labels(processed, theft_ratio=theft_ratio, fault_z=fault_z)
+def predict_patterns(processed: pd.DataFrame, model=None, *, theft_ratio: float = 0.55, fault_z: float = 3.0, volt_drop: float = 0.9, over_current: float = 1.35) -> pd.Series:
+	labels = rule_based_labels(processed, theft_ratio=theft_ratio, fault_z=fault_z, volt_drop=volt_drop, over_current=over_current)
 
 	if model is None:
 		return labels

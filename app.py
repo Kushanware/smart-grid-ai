@@ -23,16 +23,16 @@ def filter_data(df: pd.DataFrame, meters: list[str], date_range: tuple[pd.Timest
 
 def kpi_columns(filtered: pd.DataFrame) -> None:
 	total_kwh = filtered["kwh"].sum()
-	avg_kwh = filtered.groupby("meter_id")["kwh"].mean().mean() if not filtered.empty else 0
-	peak_row = filtered.loc[filtered["kwh"].idxmax()] if not filtered.empty else None
+	avg_kw = filtered.get("power_kw", pd.Series(dtype=float)).mean() if not filtered.empty else 0
+	peak_row = filtered.loc[filtered["power_kw"].idxmax()] if "power_kw" in filtered.columns and not filtered.empty else None
 
 	col1, col2, col3 = st.columns(3)
-	col1.metric("Total kWh", f"{total_kwh:,.1f}")
-	col2.metric("Avg kWh per meter", f"{avg_kwh:,.2f}")
+	col1.metric("Total kWh", f"{total_kwh:,.3f}")
+	col2.metric("Avg kW", f"{avg_kw:,.2f}")
 	if peak_row is not None:
-		col3.metric("Peak reading", f"{peak_row['kwh']:.1f} kWh", help=f"{peak_row['meter_id']} @ {peak_row['timestamp']:%Y-%m-%d %H:%M}")
+		col3.metric("Peak power", f"{peak_row['power_kw']:.2f} kW", help=f"{peak_row['meter_id']} @ {peak_row['timestamp']:%Y-%m-%d %H:%M:%S}")
 	else:
-		col3.metric("Peak reading", "–")
+		col3.metric("Peak power", "–")
 
 
 def render_charts(filtered: pd.DataFrame) -> None:
@@ -43,10 +43,10 @@ def render_charts(filtered: pd.DataFrame) -> None:
 	line_fig = px.line(
 		filtered,
 		x="timestamp",
-		y="kwh",
+		y="power_kw",
 		color="meter_id",
 		markers=True,
-		title="Load over time (15 min)"
+		title="Power over time"
 	)
 	line_fig.update_layout(margin=dict(l=10, r=10, t=40, b=10))
 
@@ -55,31 +55,30 @@ def render_charts(filtered: pd.DataFrame) -> None:
 		meter_totals,
 		x="meter_id",
 		y="kwh",
-		text_auto=".1f",
-		title="Total consumption by meter"
+		text_auto=".3f",
+		title="Energy consumption by meter (kWh)"
 	)
 	bar_fig.update_layout(margin=dict(l=10, r=10, t=40, b=10))
 
-	hourly = filtered.set_index("timestamp").groupby("meter_id").resample("1H")["kwh"].sum().reset_index()
-	heatmap_fig = px.density_heatmap(
-		hourly,
+	voltage_fig = px.line(
+		filtered,
 		x="timestamp",
-		y="meter_id",
-		z="kwh",
-		color_continuous_scale="Viridis",
-		title="Hourly load heatmap"
+		y="voltage",
+		color="meter_id",
+		markers=False,
+		title="Voltage"
 	)
-	heatmap_fig.update_layout(margin=dict(l=10, r=10, t=40, b=30))
+	voltage_fig.update_layout(margin=dict(l=10, r=10, t=40, b=10))
 
 	st.plotly_chart(line_fig, use_container_width=True, theme="streamlit")
 	st.plotly_chart(bar_fig, use_container_width=True, theme="streamlit")
-	st.plotly_chart(heatmap_fig, use_container_width=True, theme="streamlit")
+	st.plotly_chart(voltage_fig, use_container_width=True, theme="streamlit")
 
 
 def main() -> None:
 	st.set_page_config(page_title="Smart Grid Dashboard", layout="wide")
 	st.title("Smart Grid Dashboard")
-	st.caption("Monitor meter-level energy consumption at 15-minute granularity.")
+	st.caption("Monitor meter-level energy, power, and voltage in near real-time.")
 
 	data = load_data("data/live_data.csv")
 
@@ -98,7 +97,7 @@ def main() -> None:
 	filtered = filter_data(
 		data,
 		meters=selected_meters,
-		date_range=(pd.to_datetime(start_date), pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(minutes=15)),
+		date_range=(pd.to_datetime(start_date), pd.to_datetime(end_date) + pd.Timedelta(days=1)),
 	)
 
 	kpi_columns(filtered)

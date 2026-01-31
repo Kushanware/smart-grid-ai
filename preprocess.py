@@ -13,15 +13,23 @@ class PreprocessConfig:
 
 
 def handle_missing(df: pd.DataFrame) -> pd.DataFrame:
-	"""Forward/backfill missing kWh per meter and drop any rows still incomplete."""
+	"""Forward/backfill missing values per meter and ensure required columns."""
 	df = df.copy()
-	df["timestamp"] = pd.to_datetime(df["timestamp"])
+	df["timestamp"] = pd.to_datetime(df.get("timestamp"))
 	df = df.sort_values(["meter_id", "timestamp"])
-	df["kwh"] = (
-		df.groupby("meter_id")["kwh"]
-		.apply(lambda s: s.ffill().bfill())
-		.reset_index(level=0, drop=True)
-	)
+
+	for col in ["voltage", "current", "power_kw", "power_factor"]:
+		if col not in df.columns:
+			df[col] = pd.NA
+
+	for col in ["kwh", "voltage", "current", "power_kw", "power_factor"]:
+		if col in df.columns:
+			df[col] = (
+				df.groupby("meter_id")[col]
+				.apply(lambda s: s.ffill().bfill())
+				.reset_index(level=0, drop=True)
+			)
+
 	return df.dropna(subset=["timestamp", "meter_id", "kwh"])
 
 
@@ -63,6 +71,13 @@ def compute_features(df: pd.DataFrame, cfg: PreprocessConfig) -> pd.DataFrame:
 		df["power_kw"] = (df["voltage"] * df["current"]) / 1000.0
 	else:
 		df["power_kw"] = pd.NA
+
+	if "power_factor" not in df.columns:
+		df["power_factor"] = pd.NA
+
+	# Cumulative energy per meter (kWh total over time)
+	df["energy_kwh_cum"] = grouped["kwh_denoised"].cumsum()
+
 	return df
 
 
