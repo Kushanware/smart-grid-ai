@@ -1,6 +1,4 @@
 
-"""Preprocess smart-meter data: clean, denoise, and create model features."""
-
 from dataclasses import dataclass
 from typing import Optional
 
@@ -10,7 +8,7 @@ import pandas as pd
 @dataclass
 class PreprocessConfig:
 	interval_minutes: int = 15
-	rolling_window: int = 4  # number of intervals for smoothing/rolling features
+	rolling_window: int = 4  
 	outlier_sigma: float = 3.0
 
 
