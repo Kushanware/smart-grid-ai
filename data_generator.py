@@ -19,9 +19,13 @@ class PatternState:
 def load_existing(path: Path) -> pd.DataFrame:
 	if not path.exists() or path.stat().st_size == 0:
 		return pd.DataFrame(columns=["timestamp", "meter_id", "kwh"])
-	df = pd.read_csv(path, parse_dates=["timestamp"])
+	df = pd.read_csv(path)
 	if "timestamp" in df.columns:
-		df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
+		df["timestamp"] = (
+			pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
+			.dt.tz_localize(None)
+		)
+		df = df.dropna(subset=["timestamp"])
 	return df
 
 
@@ -39,13 +43,13 @@ def init_state(
 			energy_cum = 0.0
 		else:
 			last = meter_df.iloc[-1]
-			if "power_kw" in last and not pd.isna(last["power_kw"]):
-				power_kw = float(last["power_kw"])
+			if "power" in last and not pd.isna(last["power"]):
+				power_kw = float(last["power"])
 			elif "kwh" in last and not pd.isna(last["kwh"]):
 				power_kw = float(last["kwh"]) * 3600.0 / max(interval_seconds, 1.0)
 			else:
 				power_kw = base_kw
-			energy_cum = float(last.get("energy_kwh_cum", meter_df["kwh"].sum()))
+			energy_cum = float(last.get("energy_kwh", meter_df["kwh"].sum()))
 
 		state[meter] = {"power_kw": power_kw, "energy_kwh_cum": energy_cum}
 	return state
@@ -79,8 +83,11 @@ def generate_batch(
 	theft_p: float,
 	fault_p: float,
 	voltage_nominal: float,
-) -> list[dict[str, object]]:
+	transformer_id: str,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
 	rows: list[dict[str, object]] = []
+	transformer_total_power = 0.0
+
 	for meter in meters:
 		pat = pattern_state[meter]
 		if pat.remaining <= 0:
@@ -108,27 +115,37 @@ def generate_batch(
 		state[meter]["power_kw"] = power_kw
 		state[meter]["energy_kwh_cum"] += kwh_interval
 		pattern_state[meter] = PatternState(pat.name, pat.remaining - 1)
+		transformer_total_power += power_kw
 
 		rows.append(
 			{
 				"timestamp": ts,
 				"meter_id": meter,
+				"transformer_id": transformer_id,
 				"voltage": round(voltage, 2),
 				"current": round(current, 3),
-				"power_kw": round(power_kw, 3),
+				"power": round(power_kw, 3),
 				"kwh": round(kwh_interval, 4),
-				"energy_kwh_cum": round(state[meter]["energy_kwh_cum"], 4),
-				"power_factor": round(power_factor, 3),
-				"pattern": pat.name,
+				"energy_kwh": round(state[meter]["energy_kwh_cum"], 4),
 			}
 		)
-	return rows
+
+	# Transformer aggregate row (optional fields reused)
+	transformer_row = {
+		"timestamp": ts,
+		"transformer_id": transformer_id,
+		"transformer_load": round(transformer_total_power, 3),
+		"power": round(transformer_total_power, 3),
+	}
+	return rows, transformer_row
 
 
 def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser(description="Simulate live smart-meter readings with electrical fields.")
 	parser.add_argument("--meters", type=str, default="MTR-001,MTR-002,MTR-003", help="Comma-separated meter IDs")
 	parser.add_argument("--output", type=str, default="data/live_data.csv", help="Output CSV path")
+	parser.add_argument("--transformer-output", type=str, default="data/transformer_live.csv", help="Transformer aggregate CSV path")
+	parser.add_argument("--transformer-id", type=str, default="TX-001", help="Transformer identifier")
 	parser.add_argument("--base-kw", type=float, default=3.2, help="Starting power baseline (kW) when no history exists")
 	parser.add_argument("--drift", type=float, default=0.02, help="Deterministic upward drift per step (kW)")
 	parser.add_argument("--noise", type=float, default=0.15, help="Gaussian noise standard deviation per step (kW)")
@@ -156,6 +173,8 @@ def main() -> None:
 	meters = [m.strip() for m in args.meters.split(",") if m.strip()]
 	output_path = Path(args.output)
 	output_path.parent.mkdir(parents=True, exist_ok=True)
+	transformer_path = Path(args.transformer_output)
+	transformer_path.parent.mkdir(parents=True, exist_ok=True)
 
 	existing = load_existing(output_path)
 	state = init_state(existing, meters, args.base_kw, args.interval_seconds)
@@ -168,11 +187,12 @@ def main() -> None:
 	pattern_state = {meter: PatternState("normal", 0) for meter in meters}
 	current_ts = start_ts
 	write_header = existing.empty
+	write_tx_header = not transformer_path.exists() or transformer_path.stat().st_size == 0
 	step_index = 0
 	max_steps = float("inf") if args.steps == 0 else max(0, args.steps)
 
 	while step_index < max_steps:
-		batch = generate_batch(
+		batch, transformer_row = generate_batch(
 			ts=current_ts,
 			state=state,
 			meters=meters,
@@ -190,11 +210,17 @@ def main() -> None:
 			theft_p=args.theft_prob,
 			fault_p=args.fault_prob,
 			voltage_nominal=args.voltage_nominal,
+			transformer_id=args.transformer_id,
 		)
 
 		df = pd.DataFrame(batch)
 		df.to_csv(output_path, mode="a", index=False, header=write_header)
 		write_header = False
+
+		pd.DataFrame([transformer_row]).to_csv(
+			transformer_path, mode="a", index=False, header=write_tx_header
+		)
+		write_tx_header = False
 
 		step_index += 1
 		current_ts += timedelta(seconds=args.interval_seconds)

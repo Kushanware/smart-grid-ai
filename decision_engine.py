@@ -19,11 +19,11 @@ def rule_based_labels(processed: pd.DataFrame, *, theft_ratio: float, fault_z: f
 	"""Heuristics: theft when far below rolling avg; fault when spike or electrical anomaly."""
 	df = processed.copy()
 	grouped = df.groupby("meter_id")
-	mean = grouped["kwh_denoised"].transform("mean")
-	std = grouped["kwh_denoised"].transform("std").fillna(0.001)
-	z = (df["kwh_denoised"] - mean) / std
+	mean = grouped["power"].transform("mean")
+	std = grouped["power"].transform("std").fillna(0.001)
+	z = (df["power"] - mean) / std
 
-	theft_mask = df["kwh_denoised"] < theft_ratio * df["rolling_avg_kwh"].clip(lower=0.001)
+	theft_mask = df["power"] < theft_ratio * df["rolling_avg_power"].clip(lower=0.001)
 	fault_mask = z > fault_z
 
 	if "voltage" in df.columns and "current" in df.columns:

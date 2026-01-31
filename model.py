@@ -23,13 +23,12 @@ from preprocess import preprocess
 
 FEATURE_COLS = [
 	"kwh_denoised",
-	"rolling_avg_kwh",
-	"load_diff_from_normal",
-	"power_kw",
+	"power",
+	"rolling_avg_power",
+	"deviation_from_normal",
 	"voltage",
 	"current",
-	"power_factor",
-	"energy_kwh_cum",
+	"energy_kwh",
 ]
 CAT_COLS = ["meter_id"]
 

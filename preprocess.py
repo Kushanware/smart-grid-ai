@@ -16,13 +16,18 @@ def handle_missing(df: pd.DataFrame) -> pd.DataFrame:
 	"""Forward/backfill missing values per meter and ensure required columns."""
 	df = df.copy()
 	df["timestamp"] = pd.to_datetime(df.get("timestamp"))
+
+	# Drop transformer aggregate rows from feature-building; keep meter-level only
+	if "transformer_id" in df.columns:
+		df = df[df["meter_id"] != df["transformer_id"]]
+
 	df = df.sort_values(["meter_id", "timestamp"])
 
-	for col in ["voltage", "current", "power_kw", "power_factor"]:
+	for col in ["voltage", "current", "power", "energy_kwh"]:
 		if col not in df.columns:
 			df[col] = pd.NA
 
-	for col in ["kwh", "voltage", "current", "power_kw", "power_factor"]:
+	for col in ["kwh", "power", "voltage", "current", "energy_kwh"]:
 		if col in df.columns:
 			df[col] = (
 				df.groupby("meter_id")[col]
@@ -57,26 +62,27 @@ def compute_features(df: pd.DataFrame, cfg: PreprocessConfig) -> pd.DataFrame:
 	df = df.copy()
 	grouped = df.groupby("meter_id")
 
-	# Rolling average load (same units as kWh)
-	df["rolling_avg_kwh"] = grouped["kwh_denoised"].transform(
+	# Recompute power if possible
+	if {"voltage", "current"}.issubset(df.columns):
+		df["power"] = (df["voltage"] * df["current"]) / 1000.0
+
+	# Rolling average power
+	df["rolling_avg_power"] = grouped["power"].transform(
 		lambda s: s.rolling(cfg.rolling_window, min_periods=1).mean()
 	)
 
-	# Load difference from meter normal
-	meter_mean = grouped["kwh_denoised"].transform("mean")
-	df["load_diff_from_normal"] = df["kwh_denoised"] - meter_mean
-
-	# Optional power feature if voltage and current are present
-	if {"voltage", "current"}.issubset(df.columns):
-		df["power_kw"] = (df["voltage"] * df["current"]) / 1000.0
-	else:
-		df["power_kw"] = pd.NA
-
-	if "power_factor" not in df.columns:
-		df["power_factor"] = pd.NA
+	# Deviation from normal power
+	meter_mean = grouped["power"].transform("mean")
+	df["deviation_from_normal"] = df["power"] - meter_mean
 
 	# Cumulative energy per meter (kWh total over time)
-	df["energy_kwh_cum"] = grouped["kwh_denoised"].cumsum()
+	if "energy_kwh" not in df.columns:
+		df["energy_kwh"] = grouped["kwh_denoised"].cumsum()
+
+	# Placeholder loss (needs transformer aggregation) and anomaly/risk columns
+	df["loss"] = pd.NA
+	df["anomaly_score"] = pd.NA
+	df["risk_level"] = pd.NA
 
 	return df
 

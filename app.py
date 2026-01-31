@@ -23,14 +23,14 @@ def filter_data(df: pd.DataFrame, meters: list[str], date_range: tuple[pd.Timest
 
 def kpi_columns(filtered: pd.DataFrame) -> None:
 	total_kwh = filtered["kwh"].sum()
-	avg_kw = filtered.get("power_kw", pd.Series(dtype=float)).mean() if not filtered.empty else 0
-	peak_row = filtered.loc[filtered["power_kw"].idxmax()] if "power_kw" in filtered.columns and not filtered.empty else None
+	avg_kw = filtered.get("power", pd.Series(dtype=float)).mean() if not filtered.empty else 0
+	peak_row = filtered.loc[filtered["power"].idxmax()] if "power" in filtered.columns and not filtered.empty else None
 
 	col1, col2, col3 = st.columns(3)
 	col1.metric("Total kWh", f"{total_kwh:,.3f}")
 	col2.metric("Avg kW", f"{avg_kw:,.2f}")
 	if peak_row is not None:
-		col3.metric("Peak power", f"{peak_row['power_kw']:.2f} kW", help=f"{peak_row['meter_id']} @ {peak_row['timestamp']:%Y-%m-%d %H:%M:%S}")
+		col3.metric("Peak power", f"{peak_row['power']:.2f} kW", help=f"{peak_row['meter_id']} @ {peak_row['timestamp']:%Y-%m-%d %H:%M:%S}")
 	else:
 		col3.metric("Peak power", "–")
 
@@ -43,7 +43,7 @@ def render_charts(filtered: pd.DataFrame) -> None:
 	line_fig = px.line(
 		filtered,
 		x="timestamp",
-		y="power_kw",
+		y="power",
 		color="meter_id",
 		markers=True,
 		title="Power over time"
