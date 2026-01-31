@@ -1,6 +1,4 @@
 
-"""Utility to simulate live smart-meter readings and append to CSV."""
-
 import argparse
 import random
 import time
