@@ -29,6 +29,7 @@ def handle_missing(df: pd.DataFrame) -> pd.DataFrame:
 
 	for col in ["kwh", "power", "voltage", "current", "energy_kwh"]:
 		if col in df.columns:
+			df[col] = pd.to_numeric(df[col], errors="coerce")
 			df[col] = (
 				df.groupby("meter_id")[col]
 				.apply(lambda s: s.ffill().bfill())

@@ -127,6 +127,34 @@ def main() -> None:
 			except Exception:
 				pass
 
+	with st.expander("ℹ️ About this system", expanded=False):
+		st.markdown(
+			"""
+**Smart Energy Theft & Loss Detection Software**
+
+**What this does**
+- Monitors electricity usage from smart meters
+- Compares usage with transformer supply
+- Detects abnormal patterns using AI
+- Identifies theft, faults, or overloads
+- Shows everything live on a dashboard
+- Sends alerts with explanations
+
+**Main features**
+1. **Real-time energy monitoring**: Tracks voltage, current, and power usage with live trends.
+2. **AI-based anomaly detection**: Isolation Forest learns normal behavior and flags unusual usage.
+3. **Transformer energy balancing**: Compares transformer supply vs. sum of meters to detect losses.
+4. **Theft & fault detection**: Classifies hidden load, spikes/drops, and overloads.
+5. **Explainable alerts**: Risk score with human-readable reasons.
+6. **Interactive dashboard**: Live graphs, anomaly markers, and meter status table.
+7. **Mutation-ready design**: Handles missing data or model changes gracefully.
+8. **False positive reduction**: Uses historical behavior and balancing checks.
+
+**One-line product description**
+AI-powered smart grid monitoring software that detects energy theft, meter faults, and distribution losses in real time with explainable alerts.
+"""
+		)
+
 	base_dir = Path(__file__).parent
 	data_path = str(base_dir / "data" / "live_data.csv")
 	model_path = str(base_dir / "artifacts" / "anomaly_model.joblib")
