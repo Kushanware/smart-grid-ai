@@ -7,7 +7,6 @@ Displays:
 - Auto-refresh for live monitoring
 """
 
-import time
 from pathlib import Path
 
 import pandas as pd
@@ -16,11 +15,19 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from decision_engine import run_engine
+from report_generator import generate_pdf_report
 
 
 @st.cache_data(show_spinner=False, ttl=60)
 def load_and_process_data(data_path: str, model_path: str = None) -> pd.DataFrame:
 	"""Load, preprocess, and run decision engine on data."""
+	model_path_obj = Path(model_path) if model_path and Path(model_path).exists() else None
+	df = run_engine(data_path=Path(data_path), model_path=model_path_obj, output_path=None)
+	return df
+
+
+def load_and_process_data_uncached(data_path: str, model_path: str = None) -> pd.DataFrame:
+	"""Uncached load for live updates."""
 	model_path_obj = Path(model_path) if model_path and Path(model_path).exists() else None
 	df = run_engine(data_path=Path(data_path), model_path=model_path_obj, output_path=None)
 	return df
@@ -104,56 +111,100 @@ def show_alerts_table(filtered: pd.DataFrame) -> None:
 	st.dataframe(alerts_display.style.apply(highlight_pattern, axis=1), use_container_width=True, height=400)
 
 
-# def main() -> None:
-# 	st.set_page_config(page_title="Smart Grid Dashboard", layout="wide", page_icon="⚡")
-# 	col1, col2 = st.columns([4, 1])
-# 	with col1:
-# 		st.title("⚡ Smart Grid Dashboard")
-# 		st.caption("Real-time monitoring of energy theft & anomaly detection")
-# 	with col2:
-# 		auto_refresh = st.checkbox("Auto-refresh", value=False, help="Refresh every 60 seconds")
-# 		if auto_refresh:
-# 			st.markdown("🟢 **LIVE**")
-# 			time.sleep(30)
-# 			st.rerun()
+def main() -> None:
+	st.set_page_config(page_title="Smart Grid Dashboard", layout="wide", page_icon="⚡")
+	col1, col2 = st.columns([4, 1])
+	with col1:
+		st.title("⚡ Smart Grid Dashboard")
+		st.caption("Real-time monitoring of energy theft & anomaly detection")
+	with col2:
+		live_mode = st.checkbox("Live mode", value=False, help="Show new rows as they arrive")
+		refresh_seconds = st.number_input("Refresh (sec)", min_value=2, max_value=60, value=2, step=1, disabled=not live_mode)
+		if live_mode:
+			st.markdown("🟢 **LIVE**")
+			try:
+				st.autorefresh(interval=int(refresh_seconds * 1000), key="live_refresh")
+			except Exception:
+				pass
 
-# 	# Use absolute paths
-# 	base_dir = Path(__file__).parent
-# 	data_path = str(base_dir / "data" / "live_data.csv")
-# 	model_path = str(base_dir / "artifacts" / "anomaly_model.joblib")
+	# Use absolute paths
+	base_dir = Path(__file__).parent
+	data_path = str(base_dir / "data" / "live_data.csv")
+	model_path = str(base_dir / "artifacts" / "anomaly_model.joblib")
 
-# 	with st.spinner("Loading and analyzing data..."):
-# 		data = load_and_process_data(data_path=data_path, model_path=model_path)
+	with st.spinner("Loading and analyzing data..."):
+		if live_mode:
+			data = load_and_process_data_uncached(data_path=data_path, model_path=model_path)
+		else:
+			data = load_and_process_data(data_path=data_path, model_path=model_path)
 
-# 	st.sidebar.header("Filters")
-# 	meters = sorted(data["meter_id"].unique())
-# 	selected_meters = st.sidebar.multiselect("Meters", options=meters, default=meters[:5] if len(meters) > 5 else meters)
-# 	min_date, max_date = data["timestamp"].min(), data["timestamp"].max()
-# 	start_date, end_date = st.sidebar.date_input("Date range", value=(min_date.date(), max_date.date()), min_value=min_date.date(), max_value=max_date.date())
-# 	if "pattern" in data.columns:
-# 		patterns = ["All"] + sorted(data["pattern"].unique().tolist())
-# 		selected_pattern = st.sidebar.selectbox("Pattern", options=patterns, index=0)
-# 	else:
-# 		selected_pattern = "All"
+	st.sidebar.header("Filters")
+	meters = sorted(data["meter_id"].unique())
+	selected_meters = st.sidebar.multiselect("Meters", options=meters, default=meters[:5] if len(meters) > 5 else meters)
+	min_date, max_date = data["timestamp"].min(), data["timestamp"].max()
+	start_date, end_date = st.sidebar.date_input("Date range", value=(min_date.date(), max_date.date()), min_value=min_date.date(), max_value=max_date.date())
+	if "pattern" in data.columns:
+		patterns = ["All"] + sorted(data["pattern"].unique().tolist())
+		selected_pattern = st.sidebar.selectbox("Pattern", options=patterns, index=0)
+	else:
+		selected_pattern = "All"
 
-# 	filtered = filter_data(data, meters=selected_meters, date_range=(pd.to_datetime(start_date), pd.to_datetime(end_date) + pd.Timedelta(days=1)))
-# 	if selected_pattern != "All":
-# 		filtered = filtered[filtered["pattern"] == selected_pattern]
+	filtered = filter_data(data, meters=selected_meters, date_range=(pd.to_datetime(start_date), pd.to_datetime(end_date) + pd.Timedelta(days=1)))
+	if selected_pattern != "All":
+		filtered = filtered[filtered["pattern"] == selected_pattern]
 
-# 	kpi_columns(filtered)
-# 	st.divider()
-# 	render_charts(filtered)
-# 	st.divider()
-# 	st.subheader("Alerts & Explanations")
-# 	show_alerts_table(filtered)
-# 	st.divider()
-# 	with st.expander("View All Data", expanded=False):
-# 		display_cols = ["timestamp", "meter_id", "power", "voltage", "current", "pattern", "risk_score", "alert"]
-# 		available_cols = [col for col in display_cols if col in filtered.columns]
-# 		st.dataframe(filtered[available_cols], use_container_width=True, height=300)
-# 	st.caption(f"Last updated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')} | Total records: {len(filtered)}")
+	kpi_columns(filtered)
+	st.divider()
+	
+	# PDF Report Generation
+	st.subheader("📄 Generate Report")
+	col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 4])
+	with col_btn1:
+		if st.button("📥 Download PDF Report", type="primary", use_container_width=True):
+			with st.spinner("Generating PDF report..."):
+				try:
+					pdf_buffer = generate_pdf_report(filtered)
+					st.download_button(
+						label="💾 Download Report",
+						data=pdf_buffer,
+						file_name=f"smart_grid_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+						mime="application/pdf",
+						use_container_width=True
+					)
+					st.success("✓ Report generated successfully!")
+				except Exception as e:
+					st.error(f"Error generating report: {str(e)}")
+	with col_btn2:
+		st.caption(f"Report includes {len(filtered)} records")
+	
+	st.divider()
+	render_charts(filtered)
+	st.divider()
+	st.subheader("Alerts & Explanations")
+	show_alerts_table(filtered)
+	st.divider()
+	st.subheader("Live Tail (Latest Rows)")
+	if not filtered.empty:
+		tail_rows = filtered.sort_values("timestamp").tail(50)
+		last_seen = st.session_state.get("last_seen_ts")
+		max_ts = tail_rows["timestamp"].max()
+		def highlight_new(row):
+			if last_seen is not None and row["timestamp"] > last_seen:
+				return ["background-color: #e6ffed"] * len(row)
+			return [""] * len(row)
+		st.dataframe(tail_rows.style.apply(highlight_new, axis=1), use_container_width=True, height=300)
+		st.caption(f"Latest timestamp: {max_ts:%Y-%m-%d %H:%M:%S}")
+		st.session_state["last_seen_ts"] = max_ts
+	else:
+		st.info("No rows available yet.")
+	st.divider()
+	with st.expander("View All Data", expanded=False):
+		display_cols = ["timestamp", "meter_id", "power", "voltage", "current", "pattern", "risk_score", "alert"]
+		available_cols = [col for col in display_cols if col in filtered.columns]
+		st.dataframe(filtered[available_cols], use_container_width=True, height=300)
+	st.caption(f"Last updated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')} | Total records: {len(filtered)}")
 
 
-# if __name__ == "__main__":
-# 	main()
+if __name__ == "__main__":
+	main()
 
