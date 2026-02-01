@@ -101,13 +101,13 @@ def show_alerts_table(filtered: pd.DataFrame) -> None:
 	alerts_display["timestamp"] = alerts_display["timestamp"].dt.strftime("%Y-%m-%d %H:%M")
 	def highlight_pattern(row):
 		if row["pattern"] == "theft":
-			return ["background-color: #ffcccc"] * len(row)
+			return ["background-color: #ff6b6b; color: #1a1a1a; font-weight: 500"] * len(row)
 		elif row["pattern"] == "fault":
-			return ["background-color: #ffe6cc"] * len(row)
+			return ["background-color: #ffd93d; color: #1a1a1a; font-weight: 500"] * len(row)
 		elif row["pattern"] == "transformer_overload":
-			return ["background-color: #ff9999"] * len(row)
+			return ["background-color: #ff4757; color: white; font-weight: 600"] * len(row)
 		else:
-			return ["background-color: #ffffcc"] * len(row)
+			return ["background-color: #fff5ba; color: #1a1a1a"] * len(row)
 	st.dataframe(alerts_display.style.apply(highlight_pattern, axis=1), use_container_width=True, height=400)
 
 
@@ -127,7 +127,6 @@ def main() -> None:
 			except Exception:
 				pass
 
-	# Use absolute paths
 	base_dir = Path(__file__).parent
 	data_path = str(base_dir / "data" / "live_data.csv")
 	model_path = str(base_dir / "artifacts" / "anomaly_model.joblib")
